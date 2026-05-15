@@ -213,6 +213,7 @@ select.fi option{background:var(--bg2);}
     <div class="ttoolbar">
       <div class="tabs">
         <button class="tab active" onclick="switchTab('custodio',this)">Por custodio</button>
+        <button class="tab" onclick="switchTab('detalle',this)">Detalle custodio</button>
         <button class="tab" onclick="switchTab('activo',this)">Por activo</button>
         <button class="tab" onclick="switchTab('banquero',this)">Por banquero</button>
         <button class="tab" id="tabComp" onclick="switchTab('comp',this)" style="display:none">Comparativo custodios</button>
@@ -425,6 +426,7 @@ function renderTable(){
   const q=document.getElementById('sbox').value.toLowerCase();
   if(tab==='comp'){renderComp(q);return;}
   if(tab==='compba'){renderCompBa(q);return;}
+  if(tab==='detalle'){renderDetalle(q);return;}
   const{custodio,activo,banquero}=agg();
   const tot=custodio.reduce((s,r)=>s+r.v,0);
   let html;
@@ -508,6 +510,87 @@ function renderCompBa(q=''){
     return`<tr><td style="font-size:11px">${b}</td>${cells}</tr>`;
   }).join('');
   document.getElementById('twrap').innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Banquero</th>${heads}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+// ════════════════════════════════════════════════
+//  DETALLE CUSTODIO → ACTIVOS
+// ════════════════════════════════════════════════
+function renderDetalle(q=''){
+  const ks=filter==='all'?keys():[filter];
+  // Agregar ca de todos los meses seleccionados
+  const ca={};
+  ks.forEach(k=>{
+    const m=db.months[k]; if(!m||!m.ca) return;
+    Object.entries(m.ca).forEach(([c,activos])=>{
+      if(!ca[c]) ca[c]={};
+      Object.entries(activos).forEach(([a,d])=>{
+        if(!ca[c][a]) ca[c][a]={v:0,t:d.t||'Sin tipo'};
+        ca[c][a].v+=d.v;
+      });
+    });
+  });
+
+  if(!Object.keys(ca).length){
+    document.getElementById('twrap').innerHTML='<div class="empty">Sin datos de detalle.<br><small>Re-sube las planillas con el script actualizado para ver esta vista.</small></div>';
+    document.getElementById('rcount').textContent='';
+    return;
+  }
+
+  // Construir lista de custodios con sus activos
+  const custodios=Object.entries(ca).map(([c,activos])=>({
+    c,
+    total:Object.values(activos).reduce((s,d)=>s+d.v,0),
+    activos:Object.entries(activos).map(([a,d])=>({a,v:d.v,t:d.t})).sort((x,y)=>y.v-x.v)
+  })).sort((a,b)=>b.total-a.total);
+
+  // Filtrar por búsqueda
+  const filt=q?custodios.map(c=>({
+    ...c,
+    activos:c.activos.filter(a=>a.a.toLowerCase().includes(q)||c.c.toLowerCase().includes(q))
+  })).filter(c=>c.c.toLowerCase().includes(q)||c.activos.length>0):custodios;
+
+  const totGlobal=filt.reduce((s,c)=>s+c.total,0);
+  document.getElementById('rcount').textContent=filt.length+' custodios · '+filt.reduce((s,c)=>s+c.activos.length,0)+' activos';
+
+  let html='<div style="overflow-x:auto"><table><thead><tr><th>Custodio / Activo</th><th>Tipo</th><th class="r">Total USD</th><th class="r">% del total</th><th class="r">% del custodio</th></tr></thead><tbody>';
+
+  filt.forEach((cust,ci)=>{
+    const pctGlobal=totGlobal?(cust.total/totGlobal*100).toFixed(1):0;
+    html+=`<tr style="cursor:pointer;background:var(--bg3);border-top:2px solid var(--border2)" onclick="toggleCust(${ci})">
+      <td style="font-weight:600;font-size:12px;padding:11px 10px">
+        <span id="arrow-${ci}" style="display:inline-block;margin-right:6px;font-size:10px;transition:transform .2s;color:var(--accent)">▶</span>
+        <span class="rank t">${ci+1}</span>${cust.c}
+        <span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:6px">(${cust.activos.length} activos)</span>
+      </td>
+      <td></td>
+      <td class="tr" style="font-weight:700;color:var(--accent)">${fmt(cust.total)}</td>
+      <td class="tr" style="font-weight:600">${pctGlobal}%</td>
+      <td class="tr" style="color:var(--text3)">—</td>
+    </tr>`;
+
+    cust.activos.forEach(act=>{
+      const pctCust=cust.total?(act.v/cust.total*100).toFixed(1):0;
+      const pctGlob=totGlobal?(act.v/totGlobal*100).toFixed(2):0;
+      html+=`<tr class="cust-rows-${ci}" style="display:none">
+        <td style="padding-left:44px;font-size:11px;color:var(--text2);border-left:3px solid var(--accent);border-left-color:var(--bg4)">${act.a}</td>
+        <td><span class="badge" style="font-size:9px">${act.t||'—'}</span></td>
+        <td class="tr" style="font-size:11px">${fmt(act.v)}</td>
+        <td class="tr" style="font-size:10px;color:var(--text3)">${pctGlob}%</td>
+        <td class="tr"><div class="pct-n">${pctCust}%</div><div class="bbar"><div class="bfill" style="width:${Math.min(pctCust,100)}%"></div></div></td>
+      </tr>`;
+    });
+  });
+
+  html+='</tbody></table></div>';
+  document.getElementById('twrap').innerHTML=html;
+}
+
+function toggleCust(ci){
+  const rows=document.querySelectorAll('.cust-rows-'+ci);
+  const arrow=document.getElementById('arrow-'+ci);
+  const isOpen=rows.length&&rows[0].style.display!=='none';
+  rows.forEach(r=>r.style.display=isOpen?'none':'');
+  if(arrow) arrow.style.transform=isOpen?'':'rotate(90deg)';
 }
 
 // ════════════════════════════════════════════════
