@@ -215,7 +215,8 @@ select.fi option{background:var(--bg2);}
         <button class="tab active" onclick="switchTab('custodio',this)">Por custodio</button>
         <button class="tab" onclick="switchTab('activo',this)">Por activo</button>
         <button class="tab" onclick="switchTab('banquero',this)">Por banquero</button>
-        <button class="tab" id="tabComp" onclick="switchTab('comp',this)" style="display:none">Comparativo</button>
+        <button class="tab" id="tabComp" onclick="switchTab('comp',this)" style="display:none">Comparativo custodios</button>
+        <button class="tab" id="tabCompBa" onclick="switchTab('compba',this)" style="display:none">Comparativo banqueros</button>
       </div>
       <input type="text" class="sbox" id="sbox" placeholder="Buscar..." oninput="renderTable()">
       <span class="rcount" id="rcount"></span>
@@ -328,6 +329,7 @@ function renderAll(){
   const ks=keys();
   document.getElementById('btnExport').style.display='none';
   document.getElementById('tabComp').style.display=ks.length>=2?'inline-block':'none';
+  document.getElementById('tabCompBa').style.display=ks.length>=2?'inline-block':'none';
   document.getElementById('hsub').textContent=ks.length?(filter==='all'?'Todos los meses ('+ks.length+')':mLabel(filter)):'Sin datos';
   document.getElementById('sbBadge').style.display='inline-flex';
 }
@@ -422,6 +424,7 @@ function switchTab(t,btn){
 function renderTable(){
   const q=document.getElementById('sbox').value.toLowerCase();
   if(tab==='comp'){renderComp(q);return;}
+  if(tab==='compba'){renderCompBa(q);return;}
   const{custodio,activo,banquero}=agg();
   const tot=custodio.reduce((s,r)=>s+r.v,0);
   let html;
@@ -456,12 +459,55 @@ function renderComp(q=''){
   const all=[...new Set(ks.flatMap(k=>Object.keys(db.months[k].cu||{})))].sort();
   const filt=all.filter(c=>c.toLowerCase().includes(q));
   document.getElementById('rcount').textContent=filt.length+' custodios';
-  const heads=ks.map(k=>`<th class="r">${mShort(k)}</th>`).join('');
+  const heads=ks.map(k=>`<th class="r">${mShort(k)}</th><th class="r" style="color:var(--text3);font-size:9px">variación</th>`).join('');
   const rows=filt.map(c=>{
-    const cells=ks.map(k=>{const v=db.months[k].cu[c];return`<td class="tr">${v?fmt(v):'<span style="color:var(--text3)">—</span>'}</td>`;}).join('');
+    const vals=ks.map(k=>db.months[k].cu[c]||0);
+    const cells=vals.map((v,i)=>{
+      let varCell='<td class="tr" style="color:var(--text3)">—</td>';
+      if(i>0){
+        const prev=vals[i-1];
+        if(prev&&v){
+          const diff=v-prev; const pct=(diff/prev*100).toFixed(1);
+          const col=diff>=0?'var(--green)':'var(--red)';
+          const sign=diff>=0?'+':'';
+          varCell=`<td class="tr" style="color:${col};font-size:10px">${sign}${pct}%</td>`;
+        }else if(!prev&&v){
+          varCell=`<td class="tr" style="color:var(--text3);font-size:10px">nuevo</td>`;
+        }
+      }
+      return`<td class="tr">${v?fmt(v):'<span style="color:var(--text3)">—</span>'}</td>${varCell}`;
+    }).join('');
     return`<tr><td style="font-size:11px">${c}</td>${cells}</tr>`;
   }).join('');
   document.getElementById('twrap').innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Custodio</th>${heads}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function renderCompBa(q=''){
+  const ks=keys(); if(ks.length<2) return;
+  const all=[...new Set(ks.flatMap(k=>Object.keys(db.months[k].ba||{})))].sort();
+  const filt=all.filter(b=>b.toLowerCase().includes(q));
+  document.getElementById('rcount').textContent=filt.length+' banqueros';
+  const heads=ks.map(k=>`<th class="r">${mShort(k)}</th><th class="r" style="color:var(--text3);font-size:9px">variación</th>`).join('');
+  const rows=filt.map(b=>{
+    const vals=ks.map(k=>db.months[k].ba[b]||0);
+    const cells=vals.map((v,i)=>{
+      let varCell='<td class="tr" style="color:var(--text3)">—</td>';
+      if(i>0){
+        const prev=vals[i-1];
+        if(prev&&v){
+          const diff=v-prev; const pct=(diff/prev*100).toFixed(1);
+          const col=diff>=0?'var(--green)':'var(--red)';
+          const sign=diff>=0?'+':'';
+          varCell=`<td class="tr" style="color:${col};font-size:10px">${sign}${pct}%</td>`;
+        }else if(!prev&&v){
+          varCell=`<td class="tr" style="color:var(--text3);font-size:10px">nuevo</td>`;
+        }
+      }
+      return`<td class="tr">${v?fmt(v):'<span style="color:var(--text3)">—</span>'}</td>${varCell}`;
+    }).join('');
+    return`<tr><td style="font-size:11px">${b}</td>${cells}</tr>`;
+  }).join('');
+  document.getElementById('twrap').innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Banquero</th>${heads}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 // ════════════════════════════════════════════════
