@@ -149,53 +149,6 @@ select.fi option{background:var(--bg2);}
 
 <div class="toast" id="toast"><span class="tdot" id="tdot"></span><span id="tmsg"></span></div>
 
-<!-- IMPORT MODAL -->
-<div class="overlay" id="modalImport">
-  <div class="modal">
-    <h3>Importar planilla mensual</h3>
-    <p>Selecciona el mes y carga el archivo Excel. Los datos se guardan en Supabase.</p>
-    <div class="fg">
-      <label class="flabel">Año</label>
-      <select class="fi" id="selYear"></select>
-    </div>
-    <div class="fg">
-      <label class="flabel">Mes</label>
-      <select class="fi" id="selMonth">
-        <option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option><option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option><option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option><option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
-      </select>
-    </div>
-    <div class="warn" id="warnOver" style="display:none">⚠ Ya existe una planilla para este mes. Se sobreescribirá.</div>
-    <div class="fg">
-      <label class="flabel">Archivo Excel</label>
-      <div class="dz" id="dz" onclick="document.getElementById('mfi').click()">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-        <p>Arrastra aquí o haz clic para elegir</p>
-        <small>.xlsx / .xls</small>
-      </div>
-      <div class="fchosen" id="fchosen" style="display:none"></div>
-      <input type="file" id="mfi" accept=".xlsx,.xls" style="display:none">
-    </div>
-    <div class="mactions">
-      <button class="btn btn-outline" onclick="closeImport()">Cancelar</button>
-      <button class="btn btn-primary" id="btnDoImport" disabled onclick="doImport()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-        Importar
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- DELETE MODAL -->
-<div class="overlay" id="modalDel">
-  <div class="modal">
-    <h3>Eliminar mes</h3>
-    <p id="delMsg"></p>
-    <div class="mactions">
-      <button class="btn btn-outline" onclick="document.getElementById('modalDel').classList.remove('open')">Cancelar</button>
-      <button class="btn btn-red" onclick="confirmDel()">Eliminar</button>
-    </div>
-  </div>
-</div>
 
 <!-- HEADER -->
 <div class="header">
@@ -211,15 +164,6 @@ select.fi option{background:var(--bg2);}
     <button class="btn btn-green" id="btnExport" onclick="exportData()" style="display:none">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
       Descargar backup
-    </button>
-    <button class="btn btn-outline" onclick="document.getElementById('rfi').click()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 002-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-      Restaurar backup
-    </button>
-    <input type="file" id="rfi" accept=".json" style="display:none" onchange="restoreData(event)">
-    <button class="btn btn-primary" onclick="openImport()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-      Importar mes
     </button>
   </div>
 </div>
@@ -285,8 +229,8 @@ select.fi option{background:var(--bg2);}
 //  SUPABASE CONFIG — Reemplaza con tus credenciales
 //  (se obtienen en supabase.com → Project Settings → API)
 // ════════════════════════════════════════════════
-const SUPABASE_URL  = 'REEMPLAZA_CON_TU_PROJECT_URL';   // ej: https://xyzxyz.supabase.co
-const SUPABASE_KEY  = 'REEMPLAZA_CON_TU_ANON_KEY';      // clave "anon public"
+const SUPABASE_URL  = 'https://uyaqjothzirwzvwqemrm.supabase.co';
+const SUPABASE_KEY  = 'sb_publishable_7KbbCMf2MoQsSsZVA0jmJQ_BTpjqreA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ════════════════════════════════════════════════
@@ -513,7 +457,7 @@ function agg(){
 function renderAll(){
   renderPills(); renderMetrics(); renderCharts(); renderEvo(); renderTable();
   const ks=keys();
-  document.getElementById('btnExport').style.display=ks.length?'inline-flex':'none';
+  document.getElementById('btnExport').style.display='none';
   document.getElementById('tabComp').style.display=ks.length>=2?'inline-block':'none';
   document.getElementById('hsub').textContent=ks.length?(filter==='all'?'Todos los meses ('+ks.length+')':mLabel(filter)):'Sin datos';
   document.getElementById('sbBadge').style.display='inline-flex';
@@ -524,7 +468,7 @@ function renderPills(){
   if(!ks.length){ el.innerHTML='<span class="no-m">Sin planillas importadas</span>'; return; }
   let h=`<button class="mpill all ${filter==='all'?'active':''}" onclick="setFilter('all')">Todos</button>`;
   ks.forEach(k=>{
-    h+=`<button class="mpill ${filter===k?'active':''}" onclick="setFilter('${k}')"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent2);margin-right:4px;vertical-align:middle"></span>${mShort(k)}<span class="x" onclick="event.stopPropagation();askDel('${k}')">×</span></button>`;
+    h+=`<button class="mpill ${filter===k?'active':''}" onclick="setFilter('${k}')"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent2);margin-right:4px;vertical-align:middle"></span>${mShort(k)}</button>`;
   });
   el.innerHTML=h;
 }
