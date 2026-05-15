@@ -285,99 +285,7 @@ async function sbLoadAll(){
 }
 
 // ════════════════════════════════════════════════
-//  IMPORT MODAL
-// ════════════════════════════════════════════════
-function openImport(){
-  pendingFile=null;
-  document.getElementById('fchosen').style.display='none';
-  document.getElementById('btnDoImport').disabled=true;
-  document.getElementById('mfi').value='';
-  const sy=document.getElementById('selYear'); sy.innerHTML='';
-  const cy=new Date().getFullYear();
-  for(let y=cy+1;y>=cy-4;y--){ const o=document.createElement('option'); o.value=y; o.textContent=y; if(y===cy) o.selected=true; sy.appendChild(o); }
-  document.getElementById('selMonth').value=String(new Date().getMonth()+1).padStart(2,'0');
-  checkOver();
-  document.getElementById('modalImport').classList.add('open');
-}
-function closeImport(){ document.getElementById('modalImport').classList.remove('open'); }
-function checkOver(){
-  const k=document.getElementById('selYear').value+'-'+document.getElementById('selMonth').value;
-  document.getElementById('warnOver').style.display=db.months[k]?'block':'none';
-}
-document.getElementById('selYear').addEventListener('change',checkOver);
-document.getElementById('selMonth').addEventListener('change',checkOver);
-
-const dzEl=document.getElementById('dz');
-dzEl.addEventListener('dragover',e=>{e.preventDefault();dzEl.classList.add('over');});
-dzEl.addEventListener('dragleave',()=>dzEl.classList.remove('over'));
-dzEl.addEventListener('drop',e=>{e.preventDefault();dzEl.classList.remove('over');const f=e.dataTransfer.files[0];if(f&&(f.name.endsWith('.xlsx')||f.name.endsWith('.xls'))) setPendingFile(f);});
-document.getElementById('mfi').addEventListener('change',e=>{if(e.target.files[0]) setPendingFile(e.target.files[0]);});
-
-function setPendingFile(f){
-  pendingFile=f;
-  const el=document.getElementById('fchosen');
-  el.textContent='✓ '+f.name; el.style.display='block';
-  document.getElementById('btnDoImport').disabled=false;
-}
-function doImport(){
-  if(!pendingFile) return;
-  const k=document.getElementById('selYear').value+'-'+document.getElementById('selMonth').value;
-  closeImport(); parseFile(pendingFile,k);
-}
-
-// ════════════════════════════════════════════════
-//  PARSE EXCEL
-// ════════════════════════════════════════════════
-function parseFile(file, mk){
-  document.getElementById('twrap').innerHTML='<div class="loading"><div class="spin"></div>Procesando '+file.name+'…</div>';
-  const r=new FileReader();
-  r.onload=ev=>{
-    try{
-      const wb=XLSX.read(ev.target.result,{type:'array'});
-      const ws=wb.Sheets[wb.SheetNames[0]];
-      const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-      storeMonth(json,mk,file.name);
-    }catch(e){ toast('Error procesando archivo: '+e.message,true); document.getElementById('twrap').innerHTML='<div class="empty">Error procesando archivo</div>'; }
-  };
-  r.readAsArrayBuffer(file);
-}
-
-async function storeMonth(json, mk, fname){
-  document.getElementById('twrap').innerHTML='<div class="loading"><div class="spin"></div>Guardando en Supabase…</div>';
-  const hdr=json[0];
-  const rows=json.slice(1).filter(r=>r&&r.length>38);
-  const colAM=38, colC=2, colTipo=1, colBanq=208;
-  let usdCol=hdr.findIndex(h=>String(h||'').toLowerCase().includes('total usd'));
-  if(usdCol<0) usdCol=84;
-  const cu={}, ac={}, ti={}, ba={};
-  let n=0;
-  rows.forEach(r=>{
-    const c=String(r[colAM]||'').trim();
-    const a=String(r[colC]||'').trim();
-    const t=String(r[colTipo]||'Sin tipo').trim();
-    const b=String(r[colBanq]||'').trim();
-    const v=parseFloat(r[usdCol])||0;
-    if(!v) return; n++;
-    if(c) cu[c]=(cu[c]||0)+v;
-    if(a){ if(!ac[a]) ac[a]={v:0,t}; ac[a].v+=v; }
-    if(t) ti[t]=(ti[t]||0)+v;
-    if(b) ba[b]=(ba[b]||0)+v;
-  });
-  const data={cu,ac,ti,ba,file:fname,n,ts:new Date().toISOString()};
-  try{
-    await sbSave(mk, data);
-    db.months[mk]=data;
-    filter=mk;
-    toast('✓ '+mLabel(mk)+' importado en Supabase ('+n.toLocaleString()+' registros)');
-    renderAll();
-  }catch(e){
-    toast('Error guardando en Supabase: '+e.message,true);
-    document.getElementById('twrap').innerHTML='<div class="empty">Error guardando datos. Verifica la configuración de Supabase.</div>';
-  }
-}
-
-// ════════════════════════════════════════════════
-//  EXPORT / RESTORE
+//  EXPORT BACKUP
 // ════════════════════════════════════════════════
 function exportData(){
   const ks=keys();
@@ -388,47 +296,6 @@ function exportData(){
   a.download='portfolio_backup_'+new Date().toISOString().slice(0,10)+'.json';
   a.click(); URL.revokeObjectURL(a.href);
   toast('Backup descargado ('+ks.length+' meses)');
-}
-
-async function restoreData(e){
-  const f=e.target.files[0]; if(!f) return;
-  const r=new FileReader();
-  r.onload=async ev=>{
-    try{
-      const d=JSON.parse(ev.target.result);
-      if(!d.months) throw new Error('Formato inválido');
-      const n=Object.keys(d.months).length;
-      document.getElementById('twrap').innerHTML='<div class="loading"><div class="spin"></div>Restaurando '+n+' meses en Supabase…</div>';
-      for(const[mk,data] of Object.entries(d.months)){
-        await sbSave(mk, data);
-        db.months[mk]=data;
-      }
-      filter=keys().slice(-1)[0]||'all';
-      toast('Restaurado: '+n+' meses guardados en Supabase');
-      renderAll();
-    }catch(err){ toast('Error al restaurar: '+err.message,true); }
-  };
-  r.readAsText(f);
-  e.target.value='';
-}
-
-// ════════════════════════════════════════════════
-//  DELETE
-// ════════════════════════════════════════════════
-function askDel(k){
-  delKey=k;
-  document.getElementById('delMsg').textContent='¿Eliminar los datos de '+mLabel(k)+' de Supabase? Esta acción no se puede deshacer.';
-  document.getElementById('modalDel').classList.add('open');
-}
-async function confirmDel(){
-  if(!delKey) return;
-  try{
-    await sbDelete(delKey);
-    delete db.months[delKey];
-    document.getElementById('modalDel').classList.remove('open');
-    if(filter===delKey){ const ks=keys(); filter=ks.length?ks[ks.length-1]:'all'; }
-    toast('Mes eliminado de Supabase'); delKey=null; renderAll();
-  }catch(e){ toast('Error eliminando: '+e.message,true); }
 }
 
 // ════════════════════════════════════════════════
