@@ -513,22 +513,25 @@ function renderCompBa(q=''){
 }
 
 // ════════════════════════════════════════════════
-//  DETALLE CUSTODIO → ACTIVOS
+//  DETALLE CUSTODIO → EMPRESA → N° CUENTA
+//  ca = { custodio: { empresa(Nivel2/AW): { nro_cuenta(Nivel1/AV): valor } } }
 // ════════════════════════════════════════════════
+function n(v){ return isNaN(+v)?0:(+v); } // convierte cualquier valor a número seguro
+
 function renderDetalle(q=''){
   const ks=filter==='all'?keys():[filter];
 
   // Agregar ca de todos los meses seleccionados
-  // estructura ca: { custodio: { nivel1: { nivel2: valor } } }
   const ca={};
   ks.forEach(k=>{
     const m=db.months[k]; if(!m||!m.ca) return;
-    Object.entries(m.ca).forEach(([c,nivel1s])=>{
+    Object.entries(m.ca).forEach(([c,empresas])=>{
       if(!ca[c]) ca[c]={};
-      Object.entries(nivel1s).forEach(([n1,nivel2s])=>{
-        if(!ca[c][n1]) ca[c][n1]={};
-        Object.entries(nivel2s).forEach(([n2,v])=>{
-          ca[c][n1][n2]=(ca[c][n1][n2]||0)+v;
+      Object.entries(empresas).forEach(([emp,cuentas])=>{
+        if(typeof cuentas!=='object'||cuentas===null) return; // ignorar formato viejo
+        if(!ca[c][emp]) ca[c][emp]={};
+        Object.entries(cuentas).forEach(([nro,v])=>{
+          ca[c][emp][nro]=(ca[c][emp][nro]||0)+n(v);
         });
       });
     });
@@ -540,61 +543,65 @@ function renderDetalle(q=''){
     return;
   }
 
-  // Construir lista de custodios con su jerarquía
-  const custodios=Object.entries(ca).map(([c,nivel1s])=>{
-    const n1List=Object.entries(nivel1s).map(([n1,nivel2s])=>{
-      const n2List=Object.entries(nivel2s).map(([n2,v])=>({n2,v})).sort((a,b)=>b.v-a.v);
-      return {n1,total:Object.values(nivel2s).reduce((s,v)=>s+v,0),n2List};
+  // Construir jerarquía: custodio → empresa → cuentas
+  const custodios=Object.entries(ca).map(([c,empresas])=>{
+    const empList=Object.entries(empresas).map(([emp,cuentas])=>{
+      const cuentaList=Object.entries(cuentas).map(([nro,v])=>({nro,v:n(v)})).sort((a,b)=>b.v-a.v);
+      const total=cuentaList.reduce((s,x)=>s+x.v,0);
+      return {emp,total,cuentaList};
     }).sort((a,b)=>b.total-a.total);
-    const total=Object.values(nivel1s).reduce((s,n1)=>Object.values(n1).reduce((ss,v)=>ss+v,s),0);
-    return {c,total,n1List};
+    const total=empList.reduce((s,x)=>s+x.total,0);
+    return {c,total,empList};
   }).sort((a,b)=>b.total-a.total);
 
   // Filtrar por búsqueda
   const filt=q?custodios.map(c=>({
     ...c,
-    n1List:c.n1List.map(n=>({...n,n2List:n.n2List.filter(x=>x.n2.toLowerCase().includes(q)||n.n1.toLowerCase().includes(q)||c.c.toLowerCase().includes(q))})).filter(n=>n.n2List.length>0)
-  })).filter(c=>c.n1List.length>0):custodios;
+    empList:c.empList.map(e=>({...e,
+      cuentaList:e.cuentaList.filter(x=>x.nro.toLowerCase().includes(q)||e.emp.toLowerCase().includes(q)||c.c.toLowerCase().includes(q))
+    })).filter(e=>e.cuentaList.length>0)
+  })).filter(c=>c.empList.length>0):custodios;
 
   const totGlobal=filt.reduce((s,c)=>s+c.total,0);
-  const totalN1=filt.reduce((s,c)=>s+c.n1List.length,0);
-  const totalN2=filt.reduce((s,c)=>s+c.n1List.reduce((ss,n)=>ss+n.n2List.length,0),0);
-  document.getElementById('rcount').textContent=filt.length+' custodios · '+totalN1+' grupos · '+totalN2+' cuentas';
+  const totalEmp=filt.reduce((s,c)=>s+c.empList.length,0);
+  const totalCtas=filt.reduce((s,c)=>s+c.empList.reduce((ss,e)=>ss+e.cuentaList.length,0),0);
+  document.getElementById('rcount').textContent=filt.length+' custodios · '+totalEmp+' empresas · '+totalCtas+' cuentas';
 
-  let html='<div style="overflow-x:auto"><table><thead><tr><th>Custodio / Grupo / Cuenta</th><th class="r">Total USD</th><th class="r">% del total</th><th class="r">% del custodio</th></tr></thead><tbody>';
+  let html='<div style="overflow-x:auto"><table><thead><tr><th>Custodio / Empresa / N° Cuenta</th><th class="r">Total USD</th><th class="r">% del total</th><th class="r">% del custodio</th></tr></thead><tbody>';
 
   filt.forEach((cust,ci)=>{
-    const pctGlobal=totGlobal?(cust.total/totGlobal*100).toFixed(1):0;
+    const pctG=totGlobal?(cust.total/totGlobal*100).toFixed(1):0;
     html+=`<tr style="cursor:pointer;background:var(--bg3);border-top:2px solid var(--border2)" onclick="toggleCust(${ci})">
       <td style="font-weight:600;font-size:12px;padding:11px 10px">
         <span id="arrow-c-${ci}" style="display:inline-block;margin-right:6px;font-size:10px;transition:transform .2s;color:var(--accent)">▶</span>
         <span class="rank t">${ci+1}</span>${cust.c}
-        <span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:6px">(${cust.n1List.length} grupos)</span>
+        <span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:6px">(${cust.empList.length} empresas)</span>
       </td>
       <td class="tr" style="font-weight:700;color:var(--accent)">${fmt(cust.total)}</td>
-      <td class="tr" style="font-weight:600">${pctGlobal}%</td>
+      <td class="tr" style="font-weight:600">${pctG}%</td>
       <td class="tr" style="color:var(--text3)">—</td>
     </tr>`;
 
-    cust.n1List.forEach((n1,ni)=>{
-      const n1Pct=cust.total?(n1.total/cust.total*100).toFixed(1):0;
+    cust.empList.forEach((emp,ei)=>{
+      const empPct=cust.total?(emp.total/cust.total*100).toFixed(1):0;
       html+=`<tr class="cust-rows-${ci}" style="display:none;background:var(--bg2)">
-        <td style="padding-left:32px;font-size:11px;font-weight:500;color:var(--accent);cursor:pointer" onclick="event.stopPropagation();toggleN1(${ci},${ni})">
-          <span id="arrow-n1-${ci}-${ni}" style="display:inline-block;margin-right:6px;font-size:9px;transition:transform .2s">▶</span>
-          📁 ${n1.n1}
+        <td style="padding-left:32px;font-size:11px;font-weight:600;color:var(--text);cursor:pointer" onclick="event.stopPropagation();toggleEmp(${ci},${ei})">
+          <span id="arrow-e-${ci}-${ei}" style="display:inline-block;margin-right:6px;font-size:9px;transition:transform .2s;color:var(--accent2)">▶</span>
+          ${emp.emp}
+          <span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:4px">(${emp.cuentaList.length} ctas)</span>
         </td>
-        <td class="tr" style="font-weight:600;font-size:11px">${fmt(n1.total)}</td>
-        <td class="tr" style="font-size:10px;color:var(--text3)">${(totGlobal?(n1.total/totGlobal*100).toFixed(2):0)}%</td>
-        <td class="tr"><div class="pct-n">${n1Pct}%</div><div class="bbar"><div class="bfill" style="width:${Math.min(n1Pct,100)}%;background:var(--accent2)"></div></div></td>
+        <td class="tr" style="font-weight:600;font-size:11px">${fmt(emp.total)}</td>
+        <td class="tr" style="font-size:10px;color:var(--text3)">${totGlobal?(emp.total/totGlobal*100).toFixed(2):0}%</td>
+        <td class="tr"><div class="pct-n">${empPct}%</div><div class="bbar"><div class="bfill" style="width:${Math.min(empPct,100)}%;background:var(--accent2)"></div></div></td>
       </tr>`;
 
-      n1.n2List.forEach(n2=>{
-        const n2Pct=n1.total?(n2.v/n1.total*100).toFixed(1):0;
-        html+=`<tr class="cust-rows-${ci} n1-rows-${ci}-${ni}" style="display:none">
-          <td style="padding-left:56px;font-size:11px;color:var(--text2)">${n2.n2}</td>
-          <td class="tr" style="font-size:11px">${fmt(n2.v)}</td>
-          <td class="tr" style="font-size:10px;color:var(--text3)">${(totGlobal?(n2.v/totGlobal*100).toFixed(2):0)}%</td>
-          <td class="tr"><div class="pct-n">${n2Pct}%</div><div class="bbar"><div class="bfill" style="width:${Math.min(n2Pct,100)}%"></div></div></td>
+      emp.cuentaList.forEach(ct=>{
+        const ctPct=emp.total?(ct.v/emp.total*100).toFixed(1):0;
+        html+=`<tr class="cust-rows-${ci} emp-rows-${ci}-${ei}" style="display:none;background:var(--bg2)">
+          <td style="padding-left:56px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">${ct.nro}</td>
+          <td class="tr" style="font-size:11px">${fmt(ct.v)}</td>
+          <td class="tr" style="font-size:10px;color:var(--text3)">${totGlobal?(ct.v/totGlobal*100).toFixed(2):0}%</td>
+          <td class="tr"><div class="pct-n">${ctPct}%</div><div class="bbar"><div class="bfill" style="width:${Math.min(ctPct,100)}%"></div></div></td>
         </tr>`;
       });
     });
@@ -612,17 +619,9 @@ function toggleCust(ci){
   if(arrow) arrow.style.transform=isOpen?'':'rotate(90deg)';
 }
 
-function toggleN1(ci,ni){
-  const rows=document.querySelectorAll('.n1-rows-'+ci+'-'+ni);
-  const arrow=document.getElementById('arrow-n1-'+ci+'-'+ni);
-  const isOpen=rows.length&&rows[0].style.display!=='none';
-  rows.forEach(r=>r.style.display=isOpen?'none':'');
-  if(arrow) arrow.style.transform=isOpen?'':'rotate(90deg)';
-}
-
-function toggleCust(ci){
-  const rows=document.querySelectorAll('.cust-rows-'+ci);
-  const arrow=document.getElementById('arrow-'+ci);
+function toggleEmp(ci,ei){
+  const rows=document.querySelectorAll('.emp-rows-'+ci+'-'+ei);
+  const arrow=document.getElementById('arrow-e-'+ci+'-'+ei);
   const isOpen=rows.length&&rows[0].style.display!=='none';
   rows.forEach(r=>r.style.display=isOpen?'none':'');
   if(arrow) arrow.style.transform=isOpen?'':'rotate(90deg)';
