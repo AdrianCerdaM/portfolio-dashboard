@@ -529,6 +529,7 @@ function renderDetalle(q=''){
       if(!ca[c]) ca[c]={};
       Object.entries(empresas).forEach(([emp,cuentas])=>{
         if(typeof cuentas!=='object'||cuentas===null) return; // ignorar formato viejo
+        if(emp.trim().toUpperCase()==='NO APLICA') return;    // excluir empresas sin clasificar
         if(!ca[c][emp]) ca[c][emp]={};
         Object.entries(cuentas).forEach(([nro,v])=>{
           ca[c][emp][nro]=(ca[c][emp][nro]||0)+n(v);
