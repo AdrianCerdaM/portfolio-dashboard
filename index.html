@@ -310,10 +310,11 @@ function agg(){
   const cu={}, ac={}, ti={}, ba={};
   ks.forEach(k=>{
     const m=db.months[k]; if(!m) return;
-    Object.entries(m.cu||{}).forEach(([c,v])=>cu[c]=(cu[c]||0)+v);
+    const EXCL_EMP=['no aplica','nan'];
+    Object.entries(m.cu||{}).forEach(([c,v])=>{ if(c && c.toLowerCase()!=='nan') cu[c]=(cu[c]||0)+v; });
     Object.entries(m.ac||{}).forEach(([a,d])=>{ if(!ac[a]) ac[a]={v:0,t:d.t}; ac[a].v+=d.v; });
     Object.entries(m.ti||{}).forEach(([t,v])=>ti[t]=(ti[t]||0)+v);
-    Object.entries(m.ba||{}).forEach(([b,v])=>{ if(b && b.toLowerCase()!=='nan') ba[b]=(ba[b]||0)+v; });
+    Object.entries(m.ba||{}).forEach(([b,v])=>{ if(b && !EXCL_EMP.includes(b.toLowerCase())) ba[b]=(ba[b]||0)+v; });
   });
   const custodio=Object.entries(cu).map(([c,v])=>({c,v})).sort((a,b)=>b.v-a.v);
   const activo=Object.entries(ac).map(([a,d])=>({a,v:d.v,t:d.t})).sort((a,b)=>b.v-a.v);
@@ -458,7 +459,8 @@ function renderTable(){
 
 function renderComp(q=''){
   const ks=keys(); if(ks.length<2) return;
-  const all=[...new Set(ks.flatMap(k=>Object.keys(db.months[k].cu||{})))].sort();
+  const EXCL_EMP=['no aplica','nan'];
+  const all=[...new Set(ks.flatMap(k=>Object.keys(db.months[k].cu||{})))].filter(c=>c && !EXCL_EMP.includes(c.toLowerCase())).sort();
   const filt=all.filter(c=>c.toLowerCase().includes(q));
   document.getElementById('rcount').textContent=filt.length+' custodios';
   const heads=ks.map(k=>`<th class="r">${mShort(k)}</th><th class="r" style="color:var(--text3);font-size:9px">variación</th>`).join('');
@@ -486,7 +488,8 @@ function renderComp(q=''){
 
 function renderCompBa(q=''){
   const ks=keys(); if(ks.length<2) return;
-  const all=[...new Set(ks.flatMap(k=>Object.keys(db.months[k].ba||{})))].filter(b=>b && b.toLowerCase()!=='nan').sort();
+  const EXCL_EMP=['no aplica','nan'];
+  const all=[...new Set(ks.flatMap(k=>Object.keys(db.months[k].ba||{})))].filter(b=>b && !EXCL_EMP.includes(b.toLowerCase())).sort();
   const filt=all.filter(b=>b.toLowerCase().includes(q));
   document.getElementById('rcount').textContent=filt.length+' banqueros';
   const heads=ks.map(k=>`<th class="r">${mShort(k)}</th><th class="r" style="color:var(--text3);font-size:9px">variación</th>`).join('');
@@ -529,7 +532,8 @@ function renderDetalle(q=''){
       if(!ca[c]) ca[c]={};
       Object.entries(empresas).forEach(([emp,cuentas])=>{
         if(typeof cuentas!=='object'||cuentas===null) return; // ignorar formato viejo
-        if(emp.trim().toUpperCase()==='NO APLICA') return;    // excluir empresas sin clasificar
+        const _e=emp.trim().toLowerCase();
+        if(_e==='no aplica'||_e==='nan'||_e==='') return;    // excluir empresas sin clasificar
         if(!ca[c][emp]) ca[c][emp]={};
         Object.entries(cuentas).forEach(([nro,v])=>{
           ca[c][emp][nro]=(ca[c][emp][nro]||0)+n(v);
